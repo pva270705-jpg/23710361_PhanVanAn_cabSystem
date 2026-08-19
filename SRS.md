@@ -1037,6 +1037,50 @@ flowchart LR
 
 ---
 
+# B13. REQUIREMENTS TRACEABILITY MATRIX (RTM)
+
+## B13.1. Mục đích
+
+RTM dùng để đảm bảo mỗi yêu cầu nghiệp vụ đều được truy xuất đến chức năng, Use Case và tiêu chí chấp nhận tương ứng.
+
+Mục đích:
+
+- Đảm bảo không bỏ sót yêu cầu.
+- Kiểm tra yêu cầu đã được phân rã thành chức năng hay chưa.
+- Liên kết yêu cầu với Use Case.
+- Liên kết yêu cầu với tiêu chí nghiệm thu.
+- Hỗ trợ kiểm thử và nghiệm thu hệ thống.
+
+---
+
+## B13.2. Ma trận truy xuất yêu cầu
+
+| BR-ID | Business Requirement | FR-ID | Functional Requirement | UC-ID | Use Case | AC-ID | Acceptance Criteria |
+|---|---|---|---|---|---|---|---|
+| BR-01 | Quản lý vòng đời chuyến xe | FR-07 | Quản lý trạng thái chuyến | UC-09, UC-10 | Theo dõi / Cập nhật chuyến | AC-11, AC-TRIP-01 → AC-TRIP-05 | Trạng thái chuyến được cập nhật đúng thứ tự |
+| BR-02 | Quản lý tài khoản khách hàng | FR-01 | Quản lý tài khoản khách hàng | UC-01, UC-02, UC-03 | Đăng ký, đăng nhập, cập nhật thông tin | AC-01, AC-02 | Khách hàng có thể tạo và sử dụng tài khoản |
+| BR-03 | Quản lý tài khoản tài xế | FR-02 | Quản lý tài khoản tài xế | UC-02, UC-03 | Đăng nhập / cập nhật thông tin | AC-02 | Tài xế có thể đăng nhập và cập nhật hồ sơ |
+| BR-04 | Yêu cầu đặt xe | FR-03 | Tạo yêu cầu đặt xe | UC-04 | Đặt xe | AC-04, AC-BOOKING-01 | Khách hàng có thể tạo yêu cầu đặt xe hợp lệ |
+| BR-05 | Tự động tìm tài xế | FR-04 | Tìm tài xế phù hợp | UC-06 | Tìm tài xế | AC-05, AC-06, AC-MATCH-01 | Hệ thống tìm tài xế dựa trên vị trí và trạng thái |
+| BR-06 | Xử lý từ chối / không phản hồi | FR-05 | Tìm tài xế thay thế | UC-06, UC-08 | Tìm tài xế / Từ chối chuyến | AC-08, AC-09, AC-MATCH-02 | Hệ thống tiếp tục tìm tài xế khác |
+| BR-07 | Theo dõi trạng thái chuyến | FR-06 | Theo dõi chuyến theo thời gian thực | UC-09 | Theo dõi chuyến | AC-11, AC-12 | Khách hàng xem được trạng thái chuyến |
+| BR-08 | Quản lý vị trí tài xế | FR-07 | Cập nhật vị trí tài xế | UC-11 | Cập nhật vị trí | AC-13 | Vị trí tài xế được cập nhật |
+| BR-09 | Tính cước | FR-08 | Tính cước chuyến đi | UC-12 | Tính cước | AC-14, AC-TRIP-07 | Hệ thống tính được số tiền phải trả |
+| BR-10 | Thanh toán | FR-09 | Xử lý thanh toán | UC-13 | Thanh toán | AC-15, AC-16, AC-PAY-01, AC-PAY-02 | Hỗ trợ tiền mặt và thanh toán điện tử |
+| BR-11 | Thanh toán thất bại | FR-10 | Xử lý thanh toán thất bại | UC-14 | Xử lý thanh toán thất bại | AC-17, AC-PAY-03 → AC-PAY-05 | Cho phép xử lý lại khi thanh toán thất bại |
+| BR-12 | Thông báo | FR-11 | Gửi thông báo | UC-15 | Gửi thông báo | AC-18 | Thông báo được gửi tại các sự kiện quan trọng |
+| BR-13 | Lịch sử chuyến | FR-12 | Xem lịch sử chuyến | UC-16 | Xem lịch sử chuyến | AC-19 | Khách hàng xem được lịch sử chuyến |
+| BR-14 | Đánh giá tài xế | FR-13 | Đánh giá tài xế | UC-17 | Đánh giá tài xế | AC-20 | Chỉ được đánh giá sau khi chuyến hoàn thành |
+| BR-15 | Quản trị vận hành | FR-14 | Quản lý dữ liệu vận hành | UC-18, UC-19, UC-20, UC-21 | Quản lý khách hàng / tài xế / phương tiện / chuyến | AC-21 → AC-24 | Nhân viên vận hành quản lý được dữ liệu |
+| BR-16 | Phân quyền quản trị | FR-15 | Quản lý quyền truy cập | UC-23 | Quản lý tài khoản và phân quyền | AC-25, AC-SEC-01 → AC-SEC-03 | Người dùng chỉ được thực hiện chức năng được cấp quyền |
+| BR-17 | Báo cáo vận hành | FR-16 | Báo cáo hoạt động | UC-25 | Xem báo cáo | AC-26 | Hệ thống cung cấp báo cáo vận hành |
+| BR-18 | Xác thực người dùng | FR-17 | Xác thực tài khoản | UC-02 | Đăng nhập | AC-02, AC-SEC-01 | Người dùng phải xác thực trước khi sử dụng chức năng yêu cầu tài khoản |
+| BR-19 | Bảo vệ dữ liệu | FR-18 | Bảo vệ dữ liệu | UC-23 | Quản lý quyền | AC-27, AC-SEC-05 | Dữ liệu nhạy cảm được bảo vệ |
+| BR-20 | Audit Log | FR-19 | Ghi nhận Audit Log | UC-23 | Quản lý tài khoản và phân quyền | AC-28, AC-SEC-04 | Các thao tác quan trọng được ghi nhận |
+| BR-21 | Khả năng mở rộng | NFR-03, NFR-04 | Scalability | - | - | AC-30 | Hệ thống có thể mở rộng khi tải tăng |
+| BR-22 | Khả năng chịu lỗi | NFR-06, NFR-07 | Reliability / Resilience | UC-14, UC-15 | Thanh toán / Thông báo | AC-29 | Lỗi một thành phần không làm dừng toàn hệ thống |
+| BR-23 | Kiến trúc linh hoạt | NFR-15, NFR-16, NFR-17, NFR-18 | Maintainability / Extensibility | - | - | AC-30 | Có thể bổ sung chức năng và nhà cung cấp mới |
+
 
 
 

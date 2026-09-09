@@ -1,0 +1,387 @@
+openapi: 3.0.3
+info:
+  title: FR-11 - Operations & Admin API (Quản trị và vận hành)
+  description: |
+    Giao diện cho Nhân viên vận hành (Operator) quản lý khách hàng, tài xế,
+    phương tiện, chuyến đi và xử lý sự cố. Nguồn: SRS FR-11 (FR-11.1→FR-11.5).
+    Liên quan: BR-15, BR-16, UC-18→UC-22, AC-21→AC-24, EX-04, EX-10, EX-11.
+    Ghi chú: quản lý CRUD chi tiết Customer/Driver/Vehicle đã có ở các file
+    FR-01/FR-07; file này tập trung vào các thao tác đặc thù của Operator
+    (giám sát chuyến đang diễn ra, xử lý sự cố).
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Operator - Customers
+    description: Quản lý khách hàng (FR-11.1)
+  - name: Operator - Drivers
+    description: Quản lý tài xế (FR-11.2)
+  - name: Operator - Vehicles
+    description: Quản lý phương tiện (FR-11.3)
+  - name: Operator - Trips
+    description: Quản lý và giám sát chuyến đi (FR-11.4)
+  - name: Operator - Incidents
+    description: Xử lý chuyến bị lỗi / sự cố (FR-11.5)
+
+paths:
+  /operator/customers:
+    get:
+      tags: [Operator - Customers]
+      summary: Danh sách và tìm kiếm khách hàng (FR-11.1, UC-18, AC-21)
+      operationId: operatorListCustomers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, SUSPENDED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Danh sách khách hàng
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerSummary'
+        '403':
+          description: Không có quyền (AC-25, EX-11)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /operator/customers/{customerId}/suspend:
+    post:
+      tags: [Operator - Customers]
+      summary: Tạm khóa tài khoản khách hàng (thao tác nhạy cảm, cần phân quyền - BR-16)
+      operationId: suspendCustomer
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CustomerIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: "Vi phạm điều khoản sử dụng"
+      responses:
+        '200':
+          description: Tài khoản đã bị tạm khóa (ghi Audit Log - BR-20)
+        '403':
+          description: Không đủ quyền thực hiện thao tác nhạy cảm (BR-16, AC-25)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /operator/drivers:
+    get:
+      tags: [Operator - Drivers]
+      summary: Danh sách và tìm kiếm tài xế (FR-11.2, UC-19, AC-22)
+      operationId: operatorListDrivers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [AVAILABLE, BUSY, OFFLINE, SUSPENDED]
+      responses:
+        '200':
+          description: Danh sách tài xế
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DriverSummary'
+
+  /operator/drivers/{driverId}/approve:
+    post:
+      tags: [Operator - Drivers]
+      summary: Duyệt hồ sơ / phương tiện tài xế mới đăng ký
+      operationId: approveDriver
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      responses:
+        '200':
+          description: Tài xế được duyệt, có thể hoạt động
+
+  /operator/vehicles:
+    get:
+      tags: [Operator - Vehicles]
+      summary: Danh sách và kiểm tra thông tin phương tiện (FR-11.3, UC-20, AC-23)
+      operationId: operatorListVehicles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, UNDER_REVIEW]
+      responses:
+        '200':
+          description: Danh sách phương tiện
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VehicleSummary'
+
+  /operator/trips:
+    get:
+      tags: [Operator - Trips]
+      summary: Xem danh sách chuyến đang diễn ra / toàn bộ chuyến (FR-11.4, UC-21, AC-24)
+      operationId: operatorListTrips
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: onlyActive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Danh sách chuyến đi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TripSummary'
+
+  /operator/trips/{tripId}:
+    get:
+      tags: [Operator - Trips]
+      summary: Xem chi tiết một chuyến đi (kiểm tra trạng thái tài xế, vị trí,...)
+      operationId: operatorGetTripDetail
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      responses:
+        '200':
+          description: Chi tiết chuyến đi cho Operator
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripSummary'
+
+  /operator/incidents:
+    get:
+      tags: [Operator - Incidents]
+      summary: Danh sách các chuyến bị lỗi / sự cố cần xử lý (FR-11.5, UC-22, EX-10)
+      operationId: listIncidents
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Danh sách sự cố
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IncidentResponse'
+
+  /operator/incidents/{tripId}/resolve:
+    post:
+      tags: [Operator - Incidents]
+      summary: Xử lý sự cố cho một chuyến đi bị lỗi (FR-11.5, UC-22, EX-04, EX-10)
+      description: |
+        VD: tài xế mất kết nối (EX-04), lỗi phát sinh trong chuyến (EX-10).
+        Nhân viên vận hành kiểm tra và xử lý, cập nhật kết quả.
+      operationId: resolveIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution]
+              properties:
+                resolution:
+                  type: string
+                  example: "Đã liên hệ tài xế, chuyến tiếp tục bình thường"
+                action:
+                  type: string
+                  enum: [MARK_COMPLETED, CANCEL_TRIP, REASSIGN_DRIVER, NO_ACTION]
+                  example: NO_ACTION
+      responses:
+        '200':
+          description: Sự cố đã được xử lý và ghi nhận (Audit Log - BR-20)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    CustomerIdParam:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 1001
+    DriverIdParam:
+      name: driverId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 3001
+    TripIdParam:
+      name: tripId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 9001
+
+  schemas:
+    CustomerSummary:
+      type: object
+      properties:
+        customerId:
+          type: integer
+          example: 1001
+        fullName:
+          type: string
+          example: "Nguyễn Văn A"
+        phone:
+          type: string
+          example: "0901234567"
+        status:
+          type: string
+          example: ACTIVE
+
+    DriverSummary:
+      type: object
+      properties:
+        driverId:
+          type: integer
+          example: 3001
+        fullName:
+          type: string
+          example: "Trần Văn B"
+        status:
+          type: string
+          example: AVAILABLE
+        totalTrips:
+          type: integer
+          example: 342
+
+    VehicleSummary:
+      type: object
+      properties:
+        vehicleId:
+          type: integer
+          example: 4001
+        driverId:
+          type: integer
+          example: 3001
+        plateNumber:
+          type: string
+          example: "51G-123.45"
+        status:
+          type: string
+          example: ACTIVE
+
+    TripSummary:
+      type: object
+      properties:
+        tripId:
+          type: integer
+          example: 9001
+        customerId:
+          type: integer
+          example: 1001
+        driverId:
+          type: integer
+          example: 3001
+        status:
+          type: string
+          example: IN_PROGRESS
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+
+    IncidentResponse:
+      type: object
+      properties:
+        tripId:
+          type: integer
+          example: 9001
+        issueType:
+          type: string
+          enum: [DRIVER_DISCONNECTED, CUSTOMER_DISCONNECTED, PAYMENT_ISSUE, OTHER]
+          example: DRIVER_DISCONNECTED
+        description:
+          type: string
+          example: "Tài xế mất kết nối trong 5 phút"
+        status:
+          type: string
+          enum: [OPEN, RESOLVED]
+          example: OPEN
+        resolution:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "PERMISSION_DENIED"
+        message:
+          type: string
+          example: "Bạn không có quyền thực hiện thao tác này"
+        timestamp:
+          type: string
+          format: date-time

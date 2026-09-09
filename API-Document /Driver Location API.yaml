@@ -1,0 +1,235 @@
+openapi: 3.0.3
+info:
+  title: FR-06 - Driver Location API (Vị trí tài xế)
+  description: |
+    Cập nhật, lưu và truy vấn vị trí tài xế để hỗ trợ matching và theo dõi chuyến.
+    Nguồn: SRS FR-06 (FR-06.1→FR-06.4). Liên quan: BR-08, UC-11 (Cập nhật vị trí
+    tài xế), AC-13, NFR-02 (cập nhật gần thời gian thực), NFR-11 (bảo vệ dữ liệu
+    vị trí), EX-09 (vị trí không cập nhật).
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Driver Location
+    description: Quản lý vị trí hiện tại và lịch sử vị trí của tài xế
+
+paths:
+  /drivers/{driverId}/location:
+    post:
+      tags: [Driver Location]
+      summary: Tài xế cập nhật vị trí hiện tại (FR-06.1, FR-06.2, UC-11, AC-13)
+      description: |
+        Tài xế (hoặc thiết bị GPS của tài xế) gửi vị trí định kỳ. Dữ liệu vị trí
+        phải được bảo vệ, chỉ các thành phần có quyền mới truy cập (NFR-11).
+      operationId: updateDriverLocation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocationUpdateRequest'
+            example:
+              latitude: 10.7760
+              longitude: 106.7015
+              recordedAt: "2026-09-09T10:15:30Z"
+      responses:
+        '201':
+          description: Vị trí được ghi nhận
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverLocationResponse'
+        '400':
+          description: Tọa độ không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags: [Driver Location]
+      summary: Lấy vị trí hiện tại của một tài xế (FR-06.2)
+      operationId: getDriverCurrentLocation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      responses:
+        '200':
+          description: Vị trí gần nhất được ghi nhận (EX-09 nếu dữ liệu cũ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverLocationResponse'
+        '404':
+          description: Chưa có dữ liệu vị trí cho tài xế này
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /drivers/{driverId}/location/history:
+    get:
+      tags: [Driver Location]
+      summary: Lịch sử vị trí của tài xế (DriverLocation 1-N)
+      operationId: getDriverLocationHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Danh sách bản ghi vị trí theo thời gian
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DriverLocationResponse'
+
+  /drivers/nearby:
+    get:
+      tags: [Driver Location]
+      summary: Tìm tài xế đang sẵn sàng gần một vị trí cho trước (FR-06.3, FR-06.4, BR-05)
+      description: |
+        Hỗ trợ module Matching (FR-03) tìm tài xế gần khách hàng và ước tính
+        thời gian đến (ETA).
+      operationId: findNearbyDrivers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+            example: 10.7756
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+            example: 106.7019
+        - name: radiusKm
+          in: query
+          schema:
+            type: number
+            default: 5
+        - name: vehicleTypeId
+          in: query
+          schema:
+            type: integer
+            example: 2
+      responses:
+        '200':
+          description: Danh sách tài xế gần vị trí, kèm ETA ước tính (FR-06.4)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NearbyDriver'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    DriverIdParam:
+      name: driverId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 3001
+
+  schemas:
+    LocationUpdateRequest:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          format: double
+          example: 10.7760
+        longitude:
+          type: number
+          format: double
+          example: 106.7015
+        recordedAt:
+          type: string
+          format: date-time
+          description: "Nếu bỏ trống, hệ thống dùng thời gian nhận request"
+
+    DriverLocationResponse:
+      type: object
+      properties:
+        locationId:
+          type: integer
+          example: 70001
+        driverId:
+          type: integer
+          example: 3001
+        latitude:
+          type: number
+          example: 10.7760
+        longitude:
+          type: number
+          example: 106.7015
+        recordedAt:
+          type: string
+          format: date-time
+
+    NearbyDriver:
+      type: object
+      properties:
+        driverId:
+          type: integer
+          example: 3001
+        fullName:
+          type: string
+          example: "Trần Văn B"
+        distanceKm:
+          type: number
+          example: 1.2
+        estimatedArrivalMinutes:
+          type: integer
+          example: 4
+        vehicleTypeId:
+          type: integer
+          example: 2
+        status:
+          type: string
+          enum: [AVAILABLE, BUSY, OFFLINE]
+          example: AVAILABLE
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "LOCATION_NOT_FOUND"
+        message:
+          type: string
+          example: "Chưa có dữ liệu vị trí cho tài xế này"
+        timestamp:
+          type: string
+          format: date-time

@@ -1,0 +1,771 @@
+openapi: 3.0.3
+
+info:
+  title: Driver Trip Offer API v1.0
+  version: "1.0.0"
+  description: |
+    API for managing trip offers sent to drivers.
+
+    This API implements SRS FR-04:
+    - FR-04.1: Notify driver about a new trip
+    - FR-04.2: Accept trip
+    - FR-04.3: Reject trip
+    - FR-04.4: Handle driver timeout
+    - FR-04.5: Find a replacement driver
+
+    Related business rules:
+    - BR-02: Driver must be available
+    - BR-04: Driver must have a suitable vehicle
+    - BR-06: Driver must respond within the configured time
+    - BR-07: Rejected or unanswered offers must be reassigned
+    - BR-08: Customer must be notified when no suitable driver exists
+
+    Related exceptions:
+    - EX-01: Driver rejects trip
+    - EX-02: Driver does not respond
+    - EX-03: No suitable driver available
+
+servers:
+  - url: https://api.cabsystem.example.com/v1
+    description: Production API
+
+tags:
+  - name: Driver Trip Offers
+    description: Manage trip offers sent to drivers
+
+paths:
+
+  /driver-offers:
+    get:
+      tags:
+        - Driver Trip Offers
+      summary: Get current driver trip offers
+      description: |
+        Returns trip offers currently available to the authenticated driver.
+
+        Only offers assigned to the authenticated driver are returned.
+        Offers that are already accepted, rejected, expired, or cancelled
+        are not returned as pending offers.
+      operationId: getDriverOffers
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter offers by status.
+          schema:
+            $ref: '#/components/schemas/OfferStatus'
+
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+
+      responses:
+
+        '200':
+          description: Driver trip offers retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverOfferPage'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /driver-offers/{offerId}:
+
+    get:
+      tags:
+        - Driver Trip Offers
+      summary: Get trip offer details
+      description: |
+        Returns detailed information about a specific trip offer.
+
+        The authenticated user must be the driver assigned to the offer.
+      operationId: getDriverOffer
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+
+      responses:
+
+        '200':
+          description: Trip offer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverOffer'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          description: Driver is not authorized to view this offer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '404':
+          description: Trip offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /driver-offers/{offerId}/accept:
+
+    post:
+      tags:
+        - Driver Trip Offers
+      summary: Accept trip offer
+      description: |
+        Allows the assigned driver to accept a trip offer.
+
+        When the driver accepts:
+        - The offer becomes ACCEPTED.
+        - The driver is assigned to the trip.
+        - The booking request becomes DRIVER_ASSIGNED.
+        - The customer is notified.
+        - The matching process stops for this request.
+
+        The driver must be available and the offer must not have expired.
+
+        Related requirements:
+        - FR-04.2
+        - BR-02
+        - BR-06
+        - AC-07
+      operationId: acceptDriverOffer
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+
+      responses:
+
+        '200':
+          description: Trip offer accepted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferActionResponse'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          description: Driver is not authorized to accept this offer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '404':
+          description: Trip offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '409':
+          description: |
+            Offer is no longer available.
+
+            Possible causes:
+            - Offer expired.
+            - Another driver accepted the trip.
+            - Booking was cancelled.
+            - Driver is no longer available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /driver-offers/{offerId}/reject:
+
+    post:
+      tags:
+        - Driver Trip Offers
+      summary: Reject trip offer
+      description: |
+        Allows the assigned driver to reject a trip offer.
+
+        When the driver rejects:
+        - The rejection is recorded.
+        - The offer becomes REJECTED.
+        - The system searches for another suitable driver.
+        - The customer does not need to create another booking request.
+
+        Related requirements:
+        - FR-04.3
+        - FR-04.5
+        - BR-07
+        - EX-01
+        - AC-MATCH-02
+      operationId: rejectDriverOffer
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectOfferRequest'
+
+      responses:
+
+        '200':
+          description: |
+            Offer rejected and replacement-driver matching started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferActionResponse'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          description: Driver is not authorized to reject this offer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '404':
+          description: Trip offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '409':
+          description: Offer cannot be rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /driver-offers/{offerId}/timeout:
+
+    post:
+      tags:
+        - Driver Trip Offers
+      summary: Handle driver offer timeout
+      description: |
+        Handles an offer when the assigned driver does not respond
+        within the configured response time.
+
+        This endpoint is intended to be triggered by the system scheduler.
+
+        When timeout occurs:
+        - The offer becomes TIMEOUT.
+        - The driver is removed from the current matching attempt.
+        - The system searches for another suitable driver.
+        - The customer keeps the original booking request.
+        - The customer does not need to create another request.
+
+        The exact response timeout value must be configured according
+        to the business policy confirmed by the Business Analyst.
+
+        Related requirements:
+        - FR-04.4
+        - FR-04.5
+        - BR-06
+        - BR-07
+        - EX-02
+      operationId: handleDriverOfferTimeout
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+
+      responses:
+
+        '200':
+          description: |
+            Offer timeout processed and replacement-driver matching started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferActionResponse'
+
+        '404':
+          description: Trip offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '409':
+          description: Offer has already been processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /driver-offers/{offerId}/resend:
+
+    post:
+      tags:
+        - Driver Trip Offers
+      summary: Resend trip offer notification
+      description: |
+        Resends the notification for an active trip offer to the assigned
+        driver.
+
+        This operation does not create a new offer and does not reset
+        the original offer expiration time.
+
+        This endpoint supports FR-04.1 when notification delivery fails.
+
+        The notification service failure must not stop the booking process.
+      operationId: resendDriverOfferNotification
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+
+      responses:
+
+        '202':
+          description: Notification resend requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+
+        '404':
+          description: Trip offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '409':
+          description: Offer is no longer active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /driver-offers/{offerId}/notification-status:
+
+    get:
+      tags:
+        - Driver Trip Offers
+      summary: Get trip offer notification status
+      description: |
+        Returns the delivery status of the latest notification
+        associated with the driver trip offer.
+      operationId: getDriverOfferNotificationStatus
+      security:
+        - bearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/OfferId'
+
+      responses:
+
+        '200':
+          description: Notification delivery status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationStatus'
+
+        '404':
+          description: Trip offer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+
+  securitySchemes:
+
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+
+    OfferId:
+      name: offerId
+      in: path
+      required: true
+      description: Unique identifier of the driver trip offer.
+      schema:
+        type: integer
+        format: int64
+        example: 90001
+
+  responses:
+
+    Unauthorized:
+      description: Authentication is required.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Forbidden:
+      description: User does not have permission to perform this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    DriverOffer:
+      type: object
+      required:
+        - offerId
+        - requestId
+        - driverId
+        - status
+        - expiresAt
+      properties:
+
+        offerId:
+          type: integer
+          format: int64
+          example: 90001
+
+        requestId:
+          type: integer
+          format: int64
+          example: 80001
+
+        tripId:
+          type: integer
+          format: int64
+          nullable: true
+          example: null
+
+        driverId:
+          type: integer
+          format: int64
+          example: 30001
+
+        customerId:
+          type: integer
+          format: int64
+          example: 20001
+
+        pickupLocation:
+          $ref: '#/components/schemas/Location'
+
+        destination:
+          $ref: '#/components/schemas/Location'
+
+        vehicleTypeId:
+          type: integer
+          format: int64
+          example: 2
+
+        vehicleTypeName:
+          type: string
+          example: "Standard Car"
+
+        distanceToPickupKm:
+          type: number
+          format: double
+          minimum: 0
+          example: 1.4
+
+        estimatedArrivalMinutes:
+          type: integer
+          minimum: 0
+          example: 5
+
+        priorityScore:
+          type: number
+          format: double
+          minimum: 0
+          example: 0.94
+
+        status:
+          $ref: '#/components/schemas/OfferStatus'
+
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-09-09T10:15:00Z"
+
+        respondedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2026-09-09T10:15:30Z"
+
+        createdAt:
+          type: string
+          format: date-time
+
+    DriverOfferPage:
+      type: object
+      required:
+        - content
+        - page
+        - size
+        - totalElements
+      properties:
+
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverOffer'
+
+        page:
+          type: integer
+          minimum: 0
+          example: 0
+
+        size:
+          type: integer
+          minimum: 1
+          example: 20
+
+        totalElements:
+          type: integer
+          format: int64
+          example: 3
+
+    OfferStatus:
+      type: string
+      enum:
+        - PENDING
+        - SENT
+        - ACCEPTED
+        - REJECTED
+        - TIMEOUT
+        - CANCELLED
+      example: SENT
+
+    RejectOfferRequest:
+      type: object
+      properties:
+
+        reason:
+          type: string
+          maxLength: 500
+          example: "Tôi đang ở quá xa điểm đón."
+
+    OfferActionResponse:
+      type: object
+      required:
+        - offerId
+        - requestId
+        - status
+        - matchingStatus
+        - message
+      properties:
+
+        offerId:
+          type: integer
+          format: int64
+          example: 90001
+
+        requestId:
+          type: integer
+          format: int64
+          example: 80001
+
+        tripId:
+          type: integer
+          format: int64
+          nullable: true
+          example: 70001
+
+        driverId:
+          type: integer
+          format: int64
+          example: 30001
+
+        status:
+          $ref: '#/components/schemas/OfferStatus'
+
+        matchingStatus:
+          type: string
+          enum:
+            - SEARCHING
+            - OFFER_SENT
+            - MATCHED
+            - NO_DRIVER_FOUND
+            - CANCELLED
+          example: SEARCHING
+
+        replacementDriverId:
+          type: integer
+          format: int64
+          nullable: true
+          example: null
+
+        attemptsCount:
+          type: integer
+          minimum: 0
+          example: 2
+
+        message:
+          type: string
+          example: "Tài xế đã từ chối. Hệ thống đang tìm tài xế thay thế."
+
+        processedAt:
+          type: string
+          format: date-time
+
+    NotificationResponse:
+      type: object
+      required:
+        - offerId
+        - status
+      properties:
+
+        offerId:
+          type: integer
+          format: int64
+          example: 90001
+
+        status:
+          type: string
+          enum:
+            - QUEUED
+            - SENT
+            - FAILED
+          example: QUEUED
+
+        message:
+          type: string
+          example: "Thông báo chuyến mới đã được đưa vào hàng đợi gửi."
+
+        requestedAt:
+          type: string
+          format: date-time
+
+    NotificationStatus:
+      type: object
+      properties:
+
+        offerId:
+          type: integer
+          format: int64
+          example: 90001
+
+        notificationType:
+          type: string
+          enum:
+            - NEW_TRIP_OFFER
+            - OFFER_ACCEPTED
+            - OFFER_REJECTED
+            - OFFER_TIMEOUT
+
+        deliveryStatus:
+          type: string
+          enum:
+            - QUEUED
+            - SENT
+            - DELIVERED
+            - FAILED
+            - RETRYING
+
+        retryCount:
+          type: integer
+          minimum: 0
+          example: 1
+
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Location:
+      type: object
+      required:
+        - latitude
+        - longitude
+      properties:
+
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          example: 10.7769
+
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          example: 106.7009
+
+        address:
+          type: string
+          example: "123 Nguyễn Huệ, Quận 1, TP.HCM"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+      properties:
+
+        errorCode:
+          type: string
+          example: "OFFER_EXPIRED"
+
+        message:
+          type: string
+          example: "Đề xuất chuyến đã hết thời gian phản hồi."
+
+        timestamp:
+          type: string
+          format: date-time
+
+        requestId:
+          type: string
+          nullable: true
+          example: "req-7f83c2"

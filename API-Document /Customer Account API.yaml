@@ -1,0 +1,280 @@
+openapi: 3.0.3
+info:
+  title: FR-01 - Customer Account API
+  description: |
+    Quản lý tài khoản khách hàng cho hệ thống CAB.
+    Nguồn: SRS FR-01 (FR-01.1 Đăng ký, FR-01.2 Đăng nhập, FR-01.3 Cập nhật thông tin).
+    Liên quan: BR-02, BR-18, UC-01, UC-02, UC-03, AC-01, AC-02.
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+    description: Server test (thay bằng URL thực tế khi deploy)
+
+tags:
+  - name: Customer Account
+    description: Đăng ký, đăng nhập, quản lý hồ sơ khách hàng
+
+paths:
+  /auth/customers/register:
+    post:
+      tags: [Customer Account]
+      summary: Đăng ký tài khoản khách hàng (FR-01.1, UC-01)
+      description: |
+        Tiền điều kiện: Người dùng chưa có tài khoản.
+        Hậu điều kiện: Tài khoản được tạo thành công.
+      operationId: registerCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRegisterRequest'
+            example:
+              fullName: "Nguyễn Văn A"
+              phone: "0901234567"
+              email: "nguyenvana@example.com"
+              password: "MatKhau123!"
+      responses:
+        '201':
+          description: Tạo tài khoản thành công (AC-01)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          description: Dữ liệu không hợp lệ (EX-12)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Tài khoản đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/customers/login:
+    post:
+      tags: [Customer Account]
+      summary: Đăng nhập khách hàng (FR-01.2, UC-02)
+      operationId: loginCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+            example:
+              email: "nguyenvana@example.com"
+              password: "MatKhau123!"
+      responses:
+        '200':
+          description: Đăng nhập thành công (AC-02)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          description: Sai thông tin xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /customers/me:
+    get:
+      tags: [Customer Account]
+      summary: Xem thông tin cá nhân khách hàng hiện tại
+      operationId: getCurrentCustomer
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Thông tin khách hàng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '401':
+          description: Chưa xác thực (AC-SEC-01)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Customer Account]
+      summary: Cập nhật thông tin cá nhân (FR-01.3, UC-03)
+      operationId: updateCurrentCustomer
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerUpdateRequest'
+            example:
+              fullName: "Nguyễn Văn A"
+              phone: "0909998888"
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          description: Dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Chưa xác thực
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /customers/{customerId}:
+    get:
+      tags: [Customer Account]
+      summary: Xem thông tin khách hàng theo ID (dùng cho Operator - liên quan FR-11.1)
+      operationId: getCustomerById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CustomerIdParam'
+      responses:
+        '200':
+          description: Thông tin khách hàng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '403':
+          description: Không có quyền (AC-SEC-02)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Không tìm thấy khách hàng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    CustomerIdParam:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 1001
+
+  schemas:
+    CustomerRegisterRequest:
+      type: object
+      required: [fullName, phone, email, password]
+      properties:
+        fullName:
+          type: string
+          example: "Nguyễn Văn A"
+        phone:
+          type: string
+          example: "0901234567"
+        email:
+          type: string
+          format: email
+          example: "nguyenvana@example.com"
+        password:
+          type: string
+          format: password
+          example: "MatKhau123!"
+
+    CustomerUpdateRequest:
+      type: object
+      properties:
+        fullName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+
+    CustomerResponse:
+      type: object
+      properties:
+        customerId:
+          type: integer
+          example: 1001
+        userId:
+          type: integer
+          example: 5001
+        fullName:
+          type: string
+          example: "Nguyễn Văn A"
+        phone:
+          type: string
+          example: "0901234567"
+        email:
+          type: string
+          example: "nguyenvana@example.com"
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, SUSPENDED]
+          example: ACTIVE
+        createdAt:
+          type: string
+          format: date-time
+
+    AuthTokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        tokenType:
+          type: string
+          example: "Bearer"
+        expiresIn:
+          type: integer
+          example: 3600
+        userId:
+          type: integer
+          example: 5001
+        role:
+          type: string
+          example: "CUSTOMER"
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          example: "Dữ liệu không hợp lệ"
+        timestamp:
+          type: string
+          format: date-time

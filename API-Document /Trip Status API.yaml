@@ -1,0 +1,287 @@
+openapi: 3.0.3
+info:
+  title: FR-05 - Trip Status API (Trạng thái chuyến đi)
+  description: |
+    Theo dõi và cập nhật trạng thái chuyến đi theo thời gian thực.
+    Nguồn: SRS FR-05 (FR-05.1→FR-05.6). Liên quan: BR-07, BR-09, UC-05 (Theo dõi
+    chuyến đi), UC-10 (Cập nhật trạng thái chuyến), AC-11, AC-12,
+    AC-TRIP-01→AC-TRIP-07, EX-05.
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Trip
+    description: Vòng đời và trạng thái của một chuyến xe (Trip)
+
+paths:
+  /trips/{tripId}:
+    get:
+      tags: [Trip]
+      summary: Xem chi tiết chuyến đi
+      operationId: getTripById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      responses:
+        '200':
+          description: Chi tiết chuyến đi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripResponse'
+        '404':
+          description: Không tìm thấy chuyến đi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips:
+    get:
+      tags: [Trip]
+      summary: Danh sách chuyến đi (lọc theo customer/driver/status)
+      operationId: listTrips
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: customerId
+          in: query
+          schema:
+            type: integer
+        - name: driverId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TripStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách chuyến đi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 42
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TripResponse'
+
+  /trips/{tripId}/track:
+    get:
+      tags: [Trip]
+      summary: Theo dõi chuyến đi theo thời gian thực cho khách hàng (UC-05, AC-12, EX-05)
+      description: |
+        Given: Khách hàng có chuyến đang thực hiện.
+        Then: Hiển thị trạng thái tìm tài xế → tài xế nhận → tài xế đến →
+        đã đón khách → đang di chuyển → hoàn thành. Nếu mất kết nối, khi kết nối
+        lại phải đồng bộ đúng trạng thái mới nhất (EX-05).
+      operationId: trackTrip
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      responses:
+        '200':
+          description: Trạng thái theo thời gian thực của chuyến đi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripTrackingResponse'
+
+  /trips/{tripId}/status:
+    put:
+      tags: [Trip]
+      summary: Tài xế cập nhật trạng thái chuyến đi (FR-05.1→FR-05.6, UC-10, BR-09)
+      description: |
+        Trạng thái phải được cập nhật đúng thứ tự (BR-09):
+        MATCHED → ARRIVED_AT_PICKUP → PICKED_UP → IN_PROGRESS → COMPLETED.
+        Mỗi lần cập nhật tạo một bản ghi TripStatus (1 Trip - N TripStatus).
+      operationId: updateTripStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/TripStatus'
+            example:
+              status: ARRIVED_AT_PICKUP
+      responses:
+        '200':
+          description: |
+            Trạng thái được cập nhật thành công.
+            AC-TRIP-01: → MATCHED. AC-TRIP-02: → ARRIVED_AT_PICKUP.
+            AC-TRIP-03: → PICKED_UP. AC-TRIP-04: → IN_PROGRESS.
+            AC-TRIP-05: → COMPLETED (kích hoạt tính cước, AC-TRIP-07).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripResponse'
+        '409':
+          description: Chuyển trạng thái không hợp lệ theo thứ tự quy định (BR-09)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{tripId}/status-history:
+    get:
+      tags: [Trip]
+      summary: Lịch sử các lần cập nhật trạng thái của chuyến (TripStatus)
+      operationId: getTripStatusHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      responses:
+        '200':
+          description: Danh sách các bản ghi trạng thái theo thời gian
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TripStatusRecord'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TripIdParam:
+      name: tripId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 9001
+
+  schemas:
+    TripStatus:
+      type: string
+      description: |
+        Thứ tự quy định (BR-09, AC-11):
+        MATCHED → ARRIVED_AT_PICKUP → PICKED_UP → IN_PROGRESS → COMPLETED
+        (CANCELLED có thể xảy ra ở các bước trước IN_PROGRESS).
+      enum:
+        - MATCHED
+        - ARRIVED_AT_PICKUP
+        - PICKED_UP
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+      example: IN_PROGRESS
+
+    TripStatusRecord:
+      type: object
+      properties:
+        statusId:
+          type: integer
+          example: 501
+        tripId:
+          type: integer
+          example: 9001
+        status:
+          $ref: '#/components/schemas/TripStatus'
+        updatedAt:
+          type: string
+          format: date-time
+
+    TripResponse:
+      type: object
+      properties:
+        tripId:
+          type: integer
+          example: 9001
+        requestId:
+          type: integer
+          example: 8001
+        customerId:
+          type: integer
+          example: 1001
+        driverId:
+          type: integer
+          example: 3001
+        pickupLocation:
+          type: string
+          example: "123 Nguyễn Huệ, Quận 1, TP.HCM"
+        destination:
+          type: string
+          example: "Sân bay Tân Sơn Nhất"
+        status:
+          $ref: '#/components/schemas/TripStatus'
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+
+    TripTrackingResponse:
+      type: object
+      properties:
+        tripId:
+          type: integer
+          example: 9001
+        status:
+          $ref: '#/components/schemas/TripStatus'
+        driverLocation:
+          type: object
+          nullable: true
+          properties:
+            latitude:
+              type: number
+              example: 10.7760
+            longitude:
+              type: number
+              example: 106.7015
+        estimatedArrivalMinutes:
+          type: integer
+          nullable: true
+          example: 3
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "INVALID_STATUS_TRANSITION"
+        message:
+          type: string
+          example: "Không thể chuyển trực tiếp từ MATCHED sang COMPLETED"
+        timestamp:
+          type: string
+          format: date-time

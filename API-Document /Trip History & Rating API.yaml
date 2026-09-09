@@ -1,0 +1,304 @@
+openapi: 3.0.3
+info:
+  title: FR-10 - Trip History & Rating API (Lịch sử và đánh giá)
+  description: |
+    Xem lịch sử chuyến đi, lịch sử giao dịch, và đánh giá tài xế sau chuyến.
+    Nguồn: SRS FR-10 (FR-10.1→FR-10.3). Liên quan: BR-13, BR-14, UC-16 (Xem
+    lịch sử), UC-17/UC-08 (Đánh giá tài xế), AC-19, AC-20, EX (chuyến chưa
+    hoàn thành không cho đánh giá).
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Trip History
+    description: Lịch sử chuyến đi và giao dịch của khách hàng
+  - name: Rating
+    description: Đánh giá tài xế sau chuyến
+
+paths:
+  /customers/{customerId}/trips:
+    get:
+      tags: [Trip History]
+      summary: Xem lịch sử chuyến đi của khách hàng (FR-10.1, UC-16, AC-19)
+      operationId: getCustomerTripHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CustomerIdParam'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách chuyến đi đã thực hiện, kèm số tiền đã thanh toán
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 15
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TripHistoryItem'
+
+  /customers/{customerId}/transactions:
+    get:
+      tags: [Trip History]
+      summary: Xem lịch sử giao dịch/thanh toán của khách hàng (FR-10.2, UC-16)
+      operationId: getCustomerTransactionHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CustomerIdParam'
+      responses:
+        '200':
+          description: Danh sách giao dịch thanh toán
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TransactionItem'
+
+  /trips/{tripId}/rating:
+    post:
+      tags: [Rating]
+      summary: Đánh giá tài xế sau khi hoàn thành chuyến (FR-10.3, UC-17/UC-08, BR-14, AC-20)
+      description: |
+        Given: Chuyến đã hoàn thành (status = COMPLETED).
+        When: Khách hàng chọn số điểm và nhập nhận xét, gửi đánh giá.
+        Then: Hệ thống lưu đánh giá (Trip 1-1 Rating).
+        Ngoại lệ: Nếu chuyến chưa hoàn thành → không cho phép đánh giá.
+      operationId: rateTrip
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RatingCreateRequest'
+            example:
+              score: 5
+              comment: "Tài xế thân thiện, lái xe an toàn."
+      responses:
+        '201':
+          description: Đánh giá được lưu thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingResponse'
+        '409':
+          description: Chuyến chưa hoàn thành, không thể đánh giá
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [Rating]
+      summary: Xem đánh giá của một chuyến đi (nếu có)
+      operationId: getTripRating
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      responses:
+        '200':
+          description: Đánh giá của chuyến
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingResponse'
+        '404':
+          description: Chuyến chưa được đánh giá
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /drivers/{driverId}/ratings:
+    get:
+      tags: [Rating]
+      summary: Danh sách đánh giá của một tài xế (hỗ trợ FR-12.5 hiệu quả tài xế)
+      operationId: getDriverRatings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      responses:
+        '200':
+          description: Danh sách đánh giá và điểm trung bình
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverRatingSummary'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    CustomerIdParam:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 1001
+    DriverIdParam:
+      name: driverId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 3001
+    TripIdParam:
+      name: tripId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 9001
+
+  schemas:
+    TripHistoryItem:
+      type: object
+      properties:
+        tripId:
+          type: integer
+          example: 9001
+        pickupLocation:
+          type: string
+          example: "123 Nguyễn Huệ, Quận 1, TP.HCM"
+        destination:
+          type: string
+          example: "Sân bay Tân Sơn Nhất"
+        driverName:
+          type: string
+          example: "Trần Văn B"
+        status:
+          type: string
+          example: COMPLETED
+        amountPaid:
+          type: number
+          example: 125000
+        completedAt:
+          type: string
+          format: date-time
+
+    TransactionItem:
+      type: object
+      properties:
+        paymentId:
+          type: integer
+          example: 20001
+        tripId:
+          type: integer
+          example: 9001
+        method:
+          type: string
+          example: ELECTRONIC
+        amount:
+          type: number
+          example: 125000
+        status:
+          type: string
+          example: SUCCESS
+        createdAt:
+          type: string
+          format: date-time
+
+    RatingCreateRequest:
+      type: object
+      required: [score]
+      properties:
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          example: "Tài xế thân thiện, lái xe an toàn."
+
+    RatingResponse:
+      type: object
+      properties:
+        ratingId:
+          type: integer
+          example: 40001
+        tripId:
+          type: integer
+          example: 9001
+        customerId:
+          type: integer
+          example: 1001
+        driverId:
+          type: integer
+          example: 3001
+        score:
+          type: integer
+          example: 5
+        comment:
+          type: string
+          example: "Tài xế thân thiện, lái xe an toàn."
+        createdAt:
+          type: string
+          format: date-time
+
+    DriverRatingSummary:
+      type: object
+      properties:
+        driverId:
+          type: integer
+          example: 3001
+        averageScore:
+          type: number
+          format: float
+          example: 4.7
+        totalRatings:
+          type: integer
+          example: 152
+        ratings:
+          type: array
+          items:
+            $ref: '#/components/schemas/RatingResponse'
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "TRIP_NOT_COMPLETED"
+        message:
+          type: string
+          example: "Chuyến chưa hoàn thành, không thể đánh giá"
+        timestamp:
+          type: string
+          format: date-time

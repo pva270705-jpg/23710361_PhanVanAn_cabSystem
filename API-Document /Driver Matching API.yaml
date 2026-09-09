@@ -1,0 +1,251 @@
+openapi: 3.0.3
+info:
+  title: FR-03 - Driver Matching API (Tìm và phân công tài xế)
+  description: |
+    Tự động tìm và phân công tài xế phù hợp dựa trên vị trí, trạng thái sẵn sàng,
+    loại xe. Nguồn: SRS FR-03 (FR-03.1→FR-03.5), BR-05, BR-06, UC-06 (Tìm tài xế),
+    AC-05, AC-06, AC-MATCH-01, AC-MATCH-02, AC-MATCH-03, EX-01, EX-02, EX-03.
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Matching
+    description: Quy trình tìm và phân công tài xế cho một BookingRequest
+
+paths:
+  /matching/requests/{requestId}/start:
+    post:
+      tags: [Matching]
+      summary: Bắt đầu tìm tài xế cho một yêu cầu đặt xe (thường gọi nội bộ ngay sau khi tạo booking) (UC-06, AC-MATCH-01)
+      operationId: startMatching
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestIdParam'
+      responses:
+        '202':
+          description: Quá trình tìm tài xế đã bắt đầu (bất đồng bộ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingStatusResponse'
+        '404':
+          description: Không tìm thấy yêu cầu đặt xe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /matching/requests/{requestId}/status:
+    get:
+      tags: [Matching]
+      summary: Xem trạng thái tìm tài xế hiện tại của một yêu cầu
+      operationId: getMatchingStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestIdParam'
+      responses:
+        '200':
+          description: Trạng thái quá trình matching
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingStatusResponse'
+
+  /matching/requests/{requestId}/candidates:
+    get:
+      tags: [Matching]
+      summary: Danh sách tài xế ứng viên đã/đang được xem xét cho yêu cầu (FR-03.1, FR-03.2, FR-03.3, FR-03.4, BR-05)
+      description: |
+        Chỉ tài xế đang sẵn sàng (BR-02), có phương tiện phù hợp loại xe (BR-04),
+        được ưu tiên theo khoảng cách tới điểm đón (BR-05).
+      operationId: getMatchingCandidates
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestIdParam'
+      responses:
+        '200':
+          description: Danh sách tài xế ứng viên, sắp xếp theo độ ưu tiên
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MatchCandidate'
+
+  /matching/requests/{requestId}/offers/{driverId}/accept:
+    post:
+      tags: [Matching]
+      summary: Tài xế chấp nhận đề xuất chuyến (FR-04.2, UC-07, AC-07)
+      operationId: acceptOffer
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestIdParam'
+        - $ref: '#/components/parameters/DriverIdParam'
+      responses:
+        '200':
+          description: Tài xế được gán cho chuyến, khách hàng nhận thông báo (AC-07)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingStatusResponse'
+        '409':
+          description: Đề xuất đã hết hạn hoặc đã được tài xế khác nhận
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /matching/requests/{requestId}/offers/{driverId}/reject:
+    post:
+      tags: [Matching]
+      summary: Tài xế từ chối đề xuất chuyến (FR-04.3, UC-08, AC-08, AC-MATCH-02, EX-01)
+      description: |
+        Then: Hệ thống ghi nhận từ chối và tự động tìm tài xế phù hợp tiếp theo,
+        khách hàng không phải tạo lại yêu cầu.
+      operationId: rejectOffer
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestIdParam'
+        - $ref: '#/components/parameters/DriverIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: "Quá xa"
+      responses:
+        '200':
+          description: Ghi nhận từ chối, hệ thống chuyển sang tìm tài xế tiếp theo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingStatusResponse'
+
+  /matching/requests/{requestId}/offers/{driverId}/timeout:
+    post:
+      tags: [Matching]
+      summary: Xử lý khi tài xế không phản hồi trong thời gian quy định (FR-04.4, BR-06, EX-02, AC-09)
+      description: |
+        Được gọi tự động bởi hệ thống (scheduler) khi hết thời gian chờ phản hồi
+        của tài xế được đề xuất. Thời gian cụ thể thuộc mục "Business Rules chưa
+        được xác nhận" (B8.3) - cần BA xác nhận với khách hàng.
+      operationId: handleOfferTimeout
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestIdParam'
+        - $ref: '#/components/parameters/DriverIdParam'
+      responses:
+        '200':
+          description: Yêu cầu được chuyển sang tài xế khác
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingStatusResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    RequestIdParam:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 8001
+    DriverIdParam:
+      name: driverId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 3001
+
+  schemas:
+    MatchingState:
+      type: string
+      enum: [SEARCHING, OFFER_SENT, MATCHED, NO_DRIVER_FOUND, CANCELLED]
+      example: OFFER_SENT
+
+    MatchCandidate:
+      type: object
+      properties:
+        driverId:
+          type: integer
+          example: 3001
+        fullName:
+          type: string
+          example: "Trần Văn B"
+        distanceToPickupKm:
+          type: number
+          format: float
+          example: 1.2
+        estimatedArrivalMinutes:
+          type: integer
+          example: 4
+        vehicleTypeId:
+          type: integer
+          example: 2
+        priorityScore:
+          type: number
+          format: float
+          example: 0.92
+        offerStatus:
+          type: string
+          enum: [PENDING, SENT, ACCEPTED, REJECTED, TIMEOUT]
+          example: SENT
+
+    MatchingStatusResponse:
+      type: object
+      properties:
+        requestId:
+          type: integer
+          example: 8001
+        state:
+          $ref: '#/components/schemas/MatchingState'
+        currentOfferDriverId:
+          type: integer
+          nullable: true
+          example: 3001
+        matchedDriverId:
+          type: integer
+          nullable: true
+          example: null
+        tripId:
+          type: integer
+          nullable: true
+          example: null
+        attemptsCount:
+          type: integer
+          description: Số lần đã thử tìm/đề xuất tài xế (EX-01, EX-02)
+          example: 2
+        message:
+          type: string
+          example: "Đang chờ tài xế 3001 phản hồi"
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "NO_DRIVER_AVAILABLE"
+        message:
+          type: string
+          example: "Không tìm được tài xế phù hợp (EX-03)"
+        timestamp:
+          type: string
+          format: date-time

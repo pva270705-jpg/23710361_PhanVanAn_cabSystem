@@ -1,0 +1,244 @@
+openapi: 3.0.3
+info:
+  title: FR-02 - Booking API (Đặt xe)
+  description: |
+    Cho phép khách hàng tạo yêu cầu đặt xe.
+    Nguồn: SRS FR-02 (FR-02.1→FR-02.5). Liên quan: BR-04, UC-02 (Đặt xe),
+    AC-04, AC-BOOKING-01.
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Booking
+    description: Quản lý yêu cầu đặt xe (BookingRequest)
+
+paths:
+  /bookings:
+    post:
+      tags: [Booking]
+      summary: Tạo yêu cầu đặt xe (FR-02.1→FR-02.5, UC-02, AC-BOOKING-01)
+      description: |
+        Given: Khách hàng đã đăng nhập.
+        When: Nhập điểm đón, điểm đến, chọn loại xe, xác nhận.
+        Then: Hệ thống tạo yêu cầu đặt xe và chuyển sang trạng thái tìm tài xế.
+      operationId: createBooking
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+            example:
+              pickupLocation:
+                address: "123 Nguyễn Huệ, Quận 1, TP.HCM"
+                latitude: 10.7756
+                longitude: 106.7019
+              destination:
+                address: "Sân bay Tân Sơn Nhất"
+                latitude: 10.8188
+                longitude: 106.6520
+              vehicleTypeId: 2
+      responses:
+        '201':
+          description: Yêu cầu đặt xe được tạo, hệ thống bắt đầu tìm tài xế (AC-04)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          description: Vị trí không hợp lệ hoặc dữ liệu thiếu (EX-12)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Chưa đăng nhập (AC-SEC-01)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags: [Booking]
+      summary: Danh sách yêu cầu đặt xe của khách hàng hiện tại
+      operationId: listBookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách yêu cầu đặt xe
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 3
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BookingResponse'
+
+  /bookings/{requestId}:
+    get:
+      tags: [Booking]
+      summary: Xem chi tiết một yêu cầu đặt xe
+      operationId: getBookingById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestIdParam'
+      responses:
+        '200':
+          description: Chi tiết yêu cầu đặt xe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '404':
+          description: Không tìm thấy yêu cầu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bookings/{requestId}/cancel:
+    post:
+      tags: [Booking]
+      summary: Hủy yêu cầu đặt xe (trước khi tài xế nhận / theo chính sách hủy - B8.3 chưa xác nhận)
+      operationId: cancelBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: "Khách hàng đổi ý"
+      responses:
+        '200':
+          description: Yêu cầu đã được hủy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '409':
+          description: Không thể hủy (chuyến đã bắt đầu hoặc trạng thái không hợp lệ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    RequestIdParam:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 8001
+
+  schemas:
+    BookingStatus:
+      type: string
+      enum: [PENDING, MATCHING, MATCHED, NO_DRIVER_FOUND, CANCELLED, CONVERTED_TO_TRIP]
+      example: MATCHING
+
+    GeoPoint:
+      type: object
+      required: [address, latitude, longitude]
+      properties:
+        address:
+          type: string
+          example: "123 Nguyễn Huệ, Quận 1, TP.HCM"
+        latitude:
+          type: number
+          format: double
+          example: 10.7756
+        longitude:
+          type: number
+          format: double
+          example: 106.7019
+
+    BookingCreateRequest:
+      type: object
+      required: [pickupLocation, destination, vehicleTypeId]
+      properties:
+        pickupLocation:
+          $ref: '#/components/schemas/GeoPoint'
+        destination:
+          $ref: '#/components/schemas/GeoPoint'
+        vehicleTypeId:
+          type: integer
+          example: 2
+
+    BookingResponse:
+      type: object
+      properties:
+        requestId:
+          type: integer
+          example: 8001
+        customerId:
+          type: integer
+          example: 1001
+        pickupLocation:
+          $ref: '#/components/schemas/GeoPoint'
+        destination:
+          $ref: '#/components/schemas/GeoPoint'
+        vehicleTypeId:
+          type: integer
+          example: 2
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        tripId:
+          type: integer
+          nullable: true
+          description: "Được gán khi tài xế nhận chuyến (BookingRequest 1-1 Trip)"
+          example: null
+        createdAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "INVALID_LOCATION"
+        message:
+          type: string
+          example: "Vị trí điểm đón không hợp lệ"
+        timestamp:
+          type: string
+          format: date-time

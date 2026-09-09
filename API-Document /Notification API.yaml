@@ -1,0 +1,220 @@
+openapi: 3.0.3
+info:
+  title: FR-09 - Notification API (Thông báo)
+  description: |
+    Gửi và quản lý thông báo cho khách hàng, tài xế tại các mốc quan trọng của
+    chuyến đi. Nguồn: SRS FR-09 (FR-09.1→FR-09.4). Liên quan: BR-12 (nghiệp vụ),
+    UC-15 (Gửi thông báo), AC-18, EX-08 (dịch vụ thông báo lỗi không dừng hệ
+    thống đặt xe), NFR-18 (mở rộng kênh thông báo mới).
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Notification
+    description: Thông báo gửi tới người dùng (Customer, Driver)
+
+paths:
+  /notifications:
+    get:
+      tags: [Notification]
+      summary: Danh sách thông báo của người dùng hiện tại
+      operationId: listMyNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/NotificationStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách thông báo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 12
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationResponse'
+
+    post:
+      tags: [Notification]
+      summary: Tạo và gửi thông báo (thường gọi nội bộ từ các module khác) (FR-09.1, FR-09.2, FR-09.3, UC-15)
+      description: |
+        Được các module Booking/Matching/Trip/Payment gọi nội bộ khi có sự kiện
+        quan trọng (VD: tiếp nhận yêu cầu, tài xế nhận chuyến, tài xế đến điểm
+        đón, hoàn thành chuyến, kết quả thanh toán). Nếu Notification Provider
+        lỗi, ghi nhận lỗi nhưng KHÔNG làm dừng quy trình đặt xe (EX-08).
+      operationId: createNotification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateRequest'
+            example:
+              userId: 5001
+              type: TRIP_DRIVER_ACCEPTED
+              content: "Tài xế Trần Văn B đã nhận chuyến của bạn."
+              channel: PUSH
+              relatedTripId: 9001
+      responses:
+        '201':
+          description: Thông báo được tạo và đưa vào hàng đợi gửi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '502':
+          description: Notification Provider không phản hồi (EX-08) - hệ thống vẫn tiếp tục, thông báo ở trạng thái FAILED để thử lại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /notifications/{notificationId}/read:
+    put:
+      tags: [Notification]
+      summary: Đánh dấu thông báo đã đọc
+      operationId: markNotificationRead
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationIdParam'
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+
+  /notifications/{notificationId}/resend:
+    post:
+      tags: [Notification]
+      summary: Gửi lại thông báo bị lỗi (FR-09.4, EX-08)
+      operationId: resendNotification
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationIdParam'
+      responses:
+        '200':
+          description: Yêu cầu gửi lại đã được ghi nhận
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '409':
+          description: Thông báo đã gửi thành công trước đó, không cần gửi lại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    NotificationIdParam:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 30001
+
+  schemas:
+    NotificationStatus:
+      type: string
+      enum: [PENDING, SENT, FAILED, READ]
+      example: SENT
+
+    NotificationType:
+      type: string
+      description: "Các mốc quan trọng theo B4 mục 5 và UC-15"
+      enum:
+        - BOOKING_RECEIVED
+        - TRIP_DRIVER_ACCEPTED
+        - TRIP_DRIVER_ARRIVED
+        - TRIP_COMPLETED
+        - PAYMENT_RESULT
+        - NEW_TRIP_OFFER
+        - TRIP_UPDATE
+      example: TRIP_DRIVER_ACCEPTED
+
+    NotificationCreateRequest:
+      type: object
+      required: [userId, type, content, channel]
+      properties:
+        userId:
+          type: integer
+          example: 5001
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        content:
+          type: string
+          example: "Tài xế Trần Văn B đã nhận chuyến của bạn."
+        channel:
+          type: string
+          enum: [PUSH, SMS, EMAIL, IN_APP]
+          example: PUSH
+        relatedTripId:
+          type: integer
+          nullable: true
+          example: 9001
+
+    NotificationResponse:
+      type: object
+      properties:
+        notificationId:
+          type: integer
+          example: 30001
+        userId:
+          type: integer
+          example: 5001
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        content:
+          type: string
+          example: "Tài xế Trần Văn B đã nhận chuyến của bạn."
+        status:
+          $ref: '#/components/schemas/NotificationStatus'
+        createdAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "NOTIFICATION_PROVIDER_UNAVAILABLE"
+        message:
+          type: string
+          example: "Nhà cung cấp thông báo không phản hồi, hệ thống sẽ thử gửi lại"
+        timestamp:
+          type: string
+          format: date-time

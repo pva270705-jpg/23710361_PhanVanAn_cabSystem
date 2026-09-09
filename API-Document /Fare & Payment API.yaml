@@ -1,0 +1,355 @@
+openapi: 3.0.3
+info:
+  title: FR-08 - Fare & Payment API (Tính cước và thanh toán)
+  description: |
+    Tính cước chuyến đi và xử lý thanh toán (tiền mặt / điện tử).
+    Nguồn: SRS FR-08 (FR-08.1→FR-08.4). Liên quan: BR-09→BR-13, BR-19, UC-06,
+    UC-14, AC-14→AC-17, AC-PAY-01→AC-PAY-06, EX-06, EX-07, NFR-13.
+    Lưu ý: CAB KHÔNG lưu trực tiếp thông tin nhạy cảm thẻ/tài khoản thanh toán
+    (BR-12, NFR-13) - việc thu thập thông tin thẻ do Payment Provider xử lý.
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Fare
+    description: Tính cước chuyến đi
+  - name: Payment
+    description: Xử lý thanh toán và giao dịch
+
+paths:
+  /trips/{tripId}/fare:
+    post:
+      tags: [Fare]
+      summary: Tính cước chuyến đi sau khi hoàn thành (FR-08.1, UC-06, BR-09/BR-10, AC-TRIP-07)
+      description: |
+        Given: Chuyến đã ở trạng thái COMPLETED.
+        Then: Hệ thống xác định số tiền phải trả (AC-14). Không cho phép tính
+        cước khi chuyến chưa hoàn thành (AC-TRIP-06).
+        Công thức tính cước theo loại dịch vụ thuộc B8.3 (chưa xác nhận với KH).
+      operationId: calculateFare
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      responses:
+        '201':
+          description: Cước phí được tính và ghi nhận
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FareResponse'
+        '409':
+          description: Chuyến chưa hoàn thành, không thể tính cước (AC-TRIP-06)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [Fare]
+      summary: Xem thông tin cước phí của chuyến
+      operationId: getFare
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      responses:
+        '200':
+          description: Thông tin cước phí
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FareResponse'
+        '404':
+          description: Chưa có thông tin cước phí
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trips/{tripId}/payments:
+    post:
+      tags: [Payment]
+      summary: Khởi tạo thanh toán cho chuyến đi (FR-08.2, FR-08.3, UC-06 Thanh toán, AC-15, AC-16, AC-PAY-01, AC-PAY-02)
+      description: |
+        Given: Chuyến đã hoàn thành và đã tính cước.
+        When: Khách hàng chọn phương thức thanh toán (CASH hoặc ELECTRONIC).
+        Then (CASH): Hệ thống ghi nhận phương thức tiền mặt trực tiếp (AC-PAY-01).
+        Then (ELECTRONIC): Hệ thống gửi yêu cầu đến Payment Provider bên ngoài
+        (AC-PAY-02), không lưu thông tin thẻ nhạy cảm (AC-PAY-06, BR-12).
+      operationId: initiatePayment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentInitiateRequest'
+            example:
+              method: ELECTRONIC
+              providerCode: "VNPAY"
+              returnUrl: "https://app.cabsystem.example.com/payment/callback"
+      responses:
+        '201':
+          description: |
+            Với CASH: giao dịch được ghi nhận ngay (AC-PAY-01).
+            Với ELECTRONIC: trả về paymentUrl để chuyển hướng khách hàng tới
+            Payment Provider, trạng thái PENDING chờ kết quả (EX-07).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '409':
+          description: Chuyến chưa được tính cước hoặc đã thanh toán thành công trước đó
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [Payment]
+      summary: Lịch sử các lần thanh toán/thử thanh toán của chuyến (Trip 1-N Payment)
+      operationId: listTripPayments
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TripIdParam'
+      responses:
+        '200':
+          description: Danh sách các giao dịch của chuyến
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentResponse'
+
+  /payments/{paymentId}:
+    get:
+      tags: [Payment]
+      summary: Xem chi tiết một giao dịch thanh toán (UC "Tra cứu giao dịch")
+      operationId: getPaymentById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PaymentIdParam'
+      responses:
+        '200':
+          description: Chi tiết giao dịch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Không tìm thấy giao dịch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payments/{paymentId}/retry:
+    post:
+      tags: [Payment]
+      summary: Xử lý lại thanh toán khi giao dịch điện tử thất bại (FR-08.4, UC-14, AC-17, AC-PAY-05, EX-06)
+      description: |
+        Given: Giao dịch trước đó ở trạng thái FAILED.
+        When: Khách hàng yêu cầu thanh toán lại.
+        Then: Hệ thống thông báo lỗi trước đó và tạo một lượt thử thanh toán mới.
+      operationId: retryPayment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PaymentIdParam'
+      responses:
+        '201':
+          description: Lượt thanh toán mới được tạo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '409':
+          description: Giao dịch không ở trạng thái cho phép thử lại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /payments/webhook:
+    post:
+      tags: [Payment]
+      summary: Callback từ Payment Provider bên ngoài báo kết quả giao dịch (FR-08.3, EX-07)
+      description: |
+        Nhà cung cấp thanh toán gọi endpoint này để báo kết quả (SUCCESS/FAILED).
+        Hệ thống KHÔNG xác nhận giao dịch thành công khi chưa có kết quả hợp lệ
+        từ Payment Provider (EX-07).
+      operationId: paymentWebhook
+      security:
+        - webhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentWebhookPayload'
+            example:
+              transactionId: "VNP20260909101530"
+              paymentId: 20001
+              result: SUCCESS
+              amount: 125000
+              signature: "3f9a...c1"
+      responses:
+        '200':
+          description: Webhook đã được xử lý
+        '400':
+          description: Chữ ký không hợp lệ hoặc payload sai định dạng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    webhookSignature:
+      type: apiKey
+      in: header
+      name: X-Payment-Signature
+
+  parameters:
+    TripIdParam:
+      name: tripId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 9001
+    PaymentIdParam:
+      name: paymentId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 20001
+
+  schemas:
+    PaymentMethod:
+      type: string
+      enum: [CASH, ELECTRONIC]
+      example: ELECTRONIC
+
+    PaymentStatus:
+      type: string
+      enum: [PENDING, SUCCESS, FAILED, RETRYING]
+      example: PENDING
+
+    FareResponse:
+      type: object
+      properties:
+        fareId:
+          type: integer
+          example: 15001
+        tripId:
+          type: integer
+          example: 9001
+        serviceType:
+          type: string
+          example: "4-cho-tieu-chuan"
+        amount:
+          type: number
+          format: double
+          example: 125000
+        currency:
+          type: string
+          example: "VND"
+        calculatedAt:
+          type: string
+          format: date-time
+
+    PaymentInitiateRequest:
+      type: object
+      required: [method]
+      properties:
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        providerCode:
+          type: string
+          description: "Bắt buộc nếu method=ELECTRONIC (VD: VNPAY, MOMO, ZALOPAY)"
+          example: "VNPAY"
+        returnUrl:
+          type: string
+          format: uri
+          description: "URL chuyển hướng sau khi khách hàng thanh toán xong"
+
+    PaymentResponse:
+      type: object
+      properties:
+        paymentId:
+          type: integer
+          example: 20001
+        tripId:
+          type: integer
+          example: 9001
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        amount:
+          type: number
+          format: double
+          example: 125000
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        transactionId:
+          type: string
+          nullable: true
+          example: "VNP20260909101530"
+        paymentUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: "Chỉ có khi method=ELECTRONIC và đang chờ khách hàng thanh toán"
+          example: "https://sandbox.vnpayment.vn/paymentv2/xxxxx"
+        failureReason:
+          type: string
+          nullable: true
+          example: null
+        createdAt:
+          type: string
+          format: date-time
+
+    PaymentWebhookPayload:
+      type: object
+      required: [paymentId, result, signature]
+      properties:
+        paymentId:
+          type: integer
+          example: 20001
+        transactionId:
+          type: string
+          example: "VNP20260909101530"
+        result:
+          type: string
+          enum: [SUCCESS, FAILED]
+          example: SUCCESS
+        amount:
+          type: number
+          example: 125000
+        signature:
+          type: string
+          example: "3f9a...c1"
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "PAYMENT_FAILED"
+        message:
+          type: string
+          example: "Giao dịch thanh toán thất bại"
+        timestamp:
+          type: string
+          format: date-time

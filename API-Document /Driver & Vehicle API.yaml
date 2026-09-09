@@ -1,0 +1,413 @@
+openapi: 3.0.3
+info:
+  title: FR-07 - Driver & Vehicle API (Tài xế và phương tiện)
+  description: |
+    Quản lý thông tin tài xế, hồ sơ, phương tiện và trạng thái hoạt động.
+    Nguồn: SRS FR-07 (FR-07.1→FR-07.4). Liên quan: BR-03, BR-04, UC-02, UC-03,
+    AC-02, AC-03 (được ánh xạ tương đương phía driver), AC-22, AC-23.
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Driver
+    description: Tài khoản và hồ sơ tài xế
+  - name: Vehicle
+    description: Phương tiện của tài xế
+  - name: Vehicle Type
+    description: Danh mục loại xe
+
+paths:
+  /drivers:
+    post:
+      tags: [Driver]
+      summary: Tạo tài khoản tài xế (tự đăng ký hoặc do Operator tạo) (FR-07.1)
+      operationId: createDriver
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverCreateRequest'
+            example:
+              fullName: "Trần Văn B"
+              phone: "0912345678"
+              email: "tranvanb@example.com"
+              password: "MatKhau123!"
+              licenseNumber: "B2-123456"
+      responses:
+        '201':
+          description: Tài khoản tài xế được tạo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverResponse'
+        '400':
+          description: Dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags: [Driver]
+      summary: Danh sách tài xế (Operator quản lý) (AC-22)
+      operationId: listDrivers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/DriverStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Danh sách tài xế
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 120
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DriverResponse'
+
+  /drivers/{driverId}:
+    get:
+      tags: [Driver]
+      summary: Xem thông tin tài xế
+      operationId: getDriverById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      responses:
+        '200':
+          description: Thông tin tài xế
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverResponse'
+        '404':
+          description: Không tìm thấy tài xế
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Driver]
+      summary: Cập nhật hồ sơ tài xế (FR-07.2, UC-03)
+      operationId: updateDriver
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverUpdateRequest'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverResponse'
+
+  /drivers/{driverId}/status:
+    put:
+      tags: [Driver]
+      summary: Chuyển trạng thái sẵn sàng nhận chuyến (FR-07.4, BR-02)
+      description: |
+        Chỉ tài xế ở trạng thái AVAILABLE mới được hệ thống matching đề xuất
+        chuyến (BR-02).
+      operationId: updateDriverStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/DriverStatus'
+            example:
+              status: AVAILABLE
+      responses:
+        '200':
+          description: Trạng thái tài xế được cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverResponse'
+
+  /drivers/{driverId}/vehicles:
+    get:
+      tags: [Vehicle]
+      summary: Danh sách phương tiện của tài xế (Driver 1-N Vehicle)
+      operationId: listDriverVehicles
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      responses:
+        '200':
+          description: Danh sách phương tiện
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VehicleResponse'
+    post:
+      tags: [Vehicle]
+      summary: Đăng ký phương tiện mới cho tài xế (FR-07.3, BR-03, BR-04)
+      description: "Phương tiện phải được đăng ký và hợp lệ (BR-03), phù hợp với loại xe khai báo (BR-04)."
+      operationId: addDriverVehicle
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DriverIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleCreateRequest'
+            example:
+              vehicleTypeId: 2
+              plateNumber: "51G-123.45"
+      responses:
+        '201':
+          description: Phương tiện được thêm (AC-23)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+
+  /vehicles/{vehicleId}:
+    put:
+      tags: [Vehicle]
+      summary: Cập nhật thông tin / trạng thái phương tiện (FR-07.3, AC-23)
+      operationId: updateVehicle
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VehicleIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleUpdateRequest'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleResponse'
+    delete:
+      tags: [Vehicle]
+      summary: Ngừng sử dụng / xóa phương tiện
+      operationId: deleteVehicle
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/VehicleIdParam'
+      responses:
+        '204':
+          description: Đã xóa
+        '404':
+          description: Không tìm thấy phương tiện
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /vehicle-types:
+    get:
+      tags: [Vehicle Type]
+      summary: Danh mục loại xe (dùng khi khách hàng đặt xe - FR-02.4)
+      operationId: listVehicleTypes
+      responses:
+        '200':
+          description: Danh sách loại xe
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VehicleTypeResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    DriverIdParam:
+      name: driverId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 3001
+    VehicleIdParam:
+      name: vehicleId
+      in: path
+      required: true
+      schema:
+        type: integer
+        example: 4001
+
+  schemas:
+    DriverStatus:
+      type: string
+      enum: [AVAILABLE, BUSY, OFFLINE, SUSPENDED]
+      example: AVAILABLE
+
+    DriverCreateRequest:
+      type: object
+      required: [fullName, phone, licenseNumber]
+      properties:
+        fullName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        licenseNumber:
+          type: string
+          example: "B2-123456"
+
+    DriverUpdateRequest:
+      type: object
+      properties:
+        fullName:
+          type: string
+        phone:
+          type: string
+        licenseNumber:
+          type: string
+
+    DriverResponse:
+      type: object
+      properties:
+        driverId:
+          type: integer
+          example: 3001
+        userId:
+          type: integer
+          example: 6001
+        fullName:
+          type: string
+          example: "Trần Văn B"
+        phone:
+          type: string
+          example: "0912345678"
+        licenseNumber:
+          type: string
+          example: "B2-123456"
+        status:
+          $ref: '#/components/schemas/DriverStatus'
+        createdAt:
+          type: string
+          format: date-time
+
+    VehicleCreateRequest:
+      type: object
+      required: [vehicleTypeId, plateNumber]
+      properties:
+        vehicleTypeId:
+          type: integer
+          example: 2
+        plateNumber:
+          type: string
+          example: "51G-123.45"
+
+    VehicleUpdateRequest:
+      type: object
+      properties:
+        vehicleTypeId:
+          type: integer
+        plateNumber:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, UNDER_REVIEW]
+
+    VehicleResponse:
+      type: object
+      properties:
+        vehicleId:
+          type: integer
+          example: 4001
+        driverId:
+          type: integer
+          example: 3001
+        vehicleTypeId:
+          type: integer
+          example: 2
+        plateNumber:
+          type: string
+          example: "51G-123.45"
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, UNDER_REVIEW]
+          example: ACTIVE
+
+    VehicleTypeResponse:
+      type: object
+      properties:
+        vehicleTypeId:
+          type: integer
+          example: 2
+        name:
+          type: string
+          example: "4 chỗ"
+        description:
+          type: string
+          example: "Xe 4 chỗ tiêu chuẩn"
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "VEHICLE_NOT_FOUND"
+        message:
+          type: string
+          example: "Không tìm thấy phương tiện"
+        timestamp:
+          type: string
+          format: date-time

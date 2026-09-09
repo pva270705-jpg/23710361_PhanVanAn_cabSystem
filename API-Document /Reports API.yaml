@@ -1,0 +1,301 @@
+openapi: 3.0.3
+info:
+  title: FR-12 - Reports API (Báo cáo vận hành)
+  description: |
+    Cung cấp báo cáo về số lượng chuyến, doanh thu, tỷ lệ hoàn thành, tỷ lệ hủy
+    và hiệu quả tài xế. Nguồn: SRS FR-12 (FR-12.1→FR-12.5). Liên quan: BR-17,
+    UC-25 (Xem báo cáo vận hành), AC-26.
+  version: "1.0.0"
+servers:
+  - url: https://api.cabsystem.example.com/v1
+
+tags:
+  - name: Reports
+    description: Báo cáo tổng hợp cho Operator, Accountant, Administrator
+
+paths:
+  /reports/trip-count:
+    get:
+      tags: [Reports]
+      summary: Báo cáo số lượng chuyến (FR-12.1)
+      operationId: getTripCountReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+        - $ref: '#/components/parameters/GroupByParam'
+      responses:
+        '200':
+          description: Báo cáo số lượng chuyến theo thời gian
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripCountReport'
+
+  /reports/revenue:
+    get:
+      tags: [Reports]
+      summary: Báo cáo doanh thu (FR-12.2)
+      operationId: getRevenueReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+        - $ref: '#/components/parameters/GroupByParam'
+      responses:
+        '200':
+          description: Báo cáo doanh thu theo thời gian
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevenueReport'
+
+  /reports/completion-rate:
+    get:
+      tags: [Reports]
+      summary: Báo cáo tỷ lệ hoàn thành chuyến (FR-12.3)
+      operationId: getCompletionRateReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+      responses:
+        '200':
+          description: Tỷ lệ hoàn thành chuyến
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateReport'
+
+  /reports/cancellation-rate:
+    get:
+      tags: [Reports]
+      summary: Báo cáo tỷ lệ hủy chuyến (FR-12.4)
+      operationId: getCancellationRateReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+      responses:
+        '200':
+          description: Tỷ lệ hủy chuyến
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateReport'
+
+  /reports/driver-performance:
+    get:
+      tags: [Reports]
+      summary: Báo cáo hiệu quả hoạt động của tài xế (FR-12.5)
+      operationId: getDriverPerformanceReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+        - name: driverId
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Danh sách hiệu quả tài xế (AC-26)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DriverPerformanceItem'
+
+  /reports/summary:
+    get:
+      tags: [Reports]
+      summary: Báo cáo tổng hợp (dashboard) cho Operator/Accountant/Administrator (UC-25, AC-26)
+      operationId: getSummaryReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FromDateParam'
+        - $ref: '#/components/parameters/ToDateParam'
+      responses:
+        '200':
+          description: Báo cáo tổng hợp gồm tất cả các chỉ số chính
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryReport'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    FromDateParam:
+      name: from
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+        example: "2026-08-01"
+    ToDateParam:
+      name: to
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+        example: "2026-08-31"
+    GroupByParam:
+      name: groupBy
+      in: query
+      schema:
+        type: string
+        enum: [DAY, WEEK, MONTH]
+        default: DAY
+
+  schemas:
+    TripCountReport:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        totalTrips:
+          type: integer
+          example: 4820
+        breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              period:
+                type: string
+                example: "2026-08-01"
+              count:
+                type: integer
+                example: 156
+
+    RevenueReport:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        totalRevenue:
+          type: number
+          example: 602500000
+        currency:
+          type: string
+          example: "VND"
+        breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              period:
+                type: string
+                example: "2026-08-01"
+              revenue:
+                type: number
+                example: 18750000
+
+    RateReport:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        totalTrips:
+          type: integer
+          example: 4820
+        matchingCount:
+          type: integer
+          description: "Số chuyến hoàn thành hoặc số chuyến bị hủy tùy loại báo cáo"
+          example: 4580
+        ratePercent:
+          type: number
+          format: float
+          example: 95.02
+
+    DriverPerformanceItem:
+      type: object
+      properties:
+        driverId:
+          type: integer
+          example: 3001
+        fullName:
+          type: string
+          example: "Trần Văn B"
+        totalTrips:
+          type: integer
+          example: 342
+        completedTrips:
+          type: integer
+          example: 330
+        cancelledTrips:
+          type: integer
+          example: 12
+        averageRating:
+          type: number
+          format: float
+          example: 4.7
+        totalRevenue:
+          type: number
+          example: 42750000
+
+    SummaryReport:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        totalTrips:
+          type: integer
+          example: 4820
+        totalRevenue:
+          type: number
+          example: 602500000
+        completionRatePercent:
+          type: number
+          example: 95.02
+        cancellationRatePercent:
+          type: number
+          example: 4.98
+        topDrivers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverPerformanceItem'
+
+    ErrorResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+          example: "INVALID_DATE_RANGE"
+        message:
+          type: string
+          example: "Khoảng thời gian không hợp lệ"
+        timestamp:
+          type: string
+          format: date-time

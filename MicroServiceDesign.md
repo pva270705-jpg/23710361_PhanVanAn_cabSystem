@@ -1,6 +1,6 @@
 # THIẾT KẾ DDD & MICROSERVICES — HỆ THỐNG CAB (23710361_PhanVanAn_cabSystem)
 
-> Tài liệu này thiết kế kiến trúc theo **Domain-Driven Design (DDD)** dựa trên SRS.md của repo, ánh xạ từng **Bounded Context (BC)** với **FR** tương ứng, mô tả **Ubiquitous Language**, **workflow/business process**, sau đó đề xuất **bảng Microservice**, **API**, **Entity/ERD** và **loại CSDL** phù hợp cho từng service.
+
 
 ---
 
